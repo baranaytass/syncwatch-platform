@@ -1,0 +1,33 @@
+{
+  "name": "syncwatch-monorepo",
+  "version": "1.0.0",
+  "description": "SyncWatch - Synchronized Video Watching Platform",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run db\" \"npm run backend\" \"npm run web\"",
+    "db": "docker compose up -d",
+    "backend": "cd backend && npm run dev",
+    "web": "cd web && npm start",
+    "stop": "docker compose down",
+    "restart": "npm run stop && npm run dev",
+    "clean": "docker compose down -v && docker system prune -f",
+    "install:all": "npm install && npm run install:packages",
+    "install:packages": "cd backend && npm install && cd ../shared && npm install && cd ../web && npm install",
+    "build:all": "cd shared && npm run build && cd ../backend && npm run build && cd ../web && npm run build",
+    "test:backend": "cd backend && npm test",
+    "test:web": "cd web && npm test",
+    "logs:db": "docker compose logs -f",
+    "status": "docker compose ps && echo '\n🔗 Services:' && echo '  Web: http://localhost:3000' && echo '  API: http://localhost:3001' && echo '  DB:  localhost:5432'"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+} 

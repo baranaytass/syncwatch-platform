@@ -1,0 +1,25 @@
+FROM node:18-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies first (better caching)
+COPY package*.json ./
+RUN npm install --legacy-peer-deps
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S reactuser -u 1001
+
+# Copy source code
+COPY . .
+
+# Set ownership
+RUN chown -R reactuser:nodejs /app
+USER reactuser
+
+# Expose port
+EXPOSE 3000
+
+# Development command with hot reload
+CMD ["npm", "start"] 

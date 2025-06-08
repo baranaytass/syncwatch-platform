@@ -1,0 +1,135 @@
+.App {
+  text-align: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d1b69 100%);
+  color: white;
+}
+
+.App-header {
+  padding: 20px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+  color: #ffffff;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.session-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-top: 2rem;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.create-session, .join-session {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 2rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.create-session h2, .join-session h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: #ffffff;
+}
+
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-primary {
+  background: linear-gradient(45deg, #6c5ce7, #a29bfe);
+  color: white;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4);
+}
+
+.btn-secondary {
+  background: linear-gradient(45deg, #00b894, #00cec9);
+  color: white;
+}
+
+.btn-secondary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 184, 148, 0.4);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.session-input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 1rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 1rem;
+  backdrop-filter: blur(5px);
+}
+
+.session-input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.session-input:focus {
+  outline: none;
+  border-color: #6c5ce7;
+  box-shadow: 0 0 10px rgba(108, 92, 231, 0.3);
+}
+
+.video-session {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-top: 2rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.video-container {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 2rem;
+  margin-top: 1rem;
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+}
+
+@media (max-width: 768px) {
+  .session-controls {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  h1 {
+    font-size: 2rem;
+  }
+  
+  .create-session, .join-session {
+    padding: 1.5rem;
+  }
+} 
