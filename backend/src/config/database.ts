@@ -1,63 +1,69 @@
 import { Pool } from 'pg';
 import { createClient } from 'redis';
-import { logger } from './logger';
+import { DatabaseConfig, RedisConfig } from '../types';
 
-// PostgreSQL connection
+// Database configuration
+const dbConfig: DatabaseConfig = {
+  host: process.env.DB_HOST || 'localhost',
+  port: Number(process.env.DB_PORT) || 5432,
+  database: process.env.DB_NAME || 'syncwatch',
+  username: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres',
+};
+
+// Redis configuration
+const redisConfig: RedisConfig = {
+  host: process.env.REDIS_HOST || 'localhost',
+  port: Number(process.env.REDIS_PORT) || 6379,
+  ...(process.env.REDIS_PASSWORD && { password: process.env.REDIS_PASSWORD }),
+};
+
+// PostgreSQL connection pool
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/syncwatch',
+  host: dbConfig.host,
+  port: dbConfig.port,
+  database: dbConfig.database,
+  user: dbConfig.username,
+  password: dbConfig.password,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 });
 
-// Redis connection
-export const redis = createClient({
-  url: process.env.REDIS_URL || 'redis://localhost:6379',
+// Redis client
+export const redisClient = createClient({
+  socket: {
+    host: redisConfig.host,
+    port: redisConfig.port,
+  },
+  ...(redisConfig.password && { password: redisConfig.password }),
 });
 
-export const connectDatabase = async (): Promise<void> => {
+// Initialize connections
+export const initializeDatabase = async (): Promise<void> => {
   try {
     // Test PostgreSQL connection
     const client = await pool.connect();
-    const result = await client.query('SELECT NOW()');
+    console.log('✅ PostgreSQL connected successfully');
     client.release();
-    
-    logger.info('✅ PostgreSQL connected successfully', {
-      timestamp: result.rows[0].now,
-    });
-  } catch (error) {
-    logger.error('❌ PostgreSQL connection failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-    throw error;
-  }
-};
 
-export const connectRedis = async (): Promise<void> => {
-  try {
-    await redis.connect();
-    
-    // Test Redis connection
-    await redis.ping();
-    
-    logger.info('✅ Redis connected successfully');
+    // Connect to Redis
+    await redisClient.connect();
+    console.log('✅ Redis connected successfully');
   } catch (error) {
-    logger.error('❌ Redis connection failed', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    console.error('❌ Database connection error:', error);
     throw error;
   }
 };
 
 // Graceful shutdown
-export const closeConnections = async (): Promise<void> => {
+export const closeDatabase = async (): Promise<void> => {
   try {
-    await redis.quit();
     await pool.end();
-    logger.info('Database connections closed');
+    await redisClient.quit();
+    console.log('✅ Database connections closed');
   } catch (error) {
-    logger.error('Error closing database connections', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
+    console.error('❌ Error closing database:', error);
+    throw error;
   }
 }; 

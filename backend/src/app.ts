@@ -5,15 +5,20 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 
-import { logger } from '@/config/logger';
-import { connectDatabase, connectRedis } from '@/config/database';
-import { errorHandler, notFoundHandler } from '@/middleware/errorHandler';
-import { requestLogger } from '@/middleware/requestLogger';
-import { WebSocketManager } from '@/websocket/WebSocketManager';
+// Infrastructure
+import { initializeDatabase, pool, redisClient, closeDatabase } from './config/database';
 
-// API Routes
-import sessionRoutes from '@/controllers/sessionController';
-import healthRoutes from '@/controllers/healthController';
+// Services
+import { SessionRepository } from './services/repositories/SessionRepository';
+import { SessionService } from './services/SessionService';
+import { VideoSyncService } from './services/VideoSyncService';
+import { WebSocketManager } from './websocket/WebSocketManager';
+
+// Controllers
+import { SessionController } from './controllers/SessionController';
+
+// Middleware
+import { BaseError } from './utils/errors';
 
 // Load environment variables
 dotenv.config();
@@ -29,110 +34,264 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3001;
 
-// Security middleware
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-}));
+// Dependency Injection Container
+class Container {
+  // Repositories
+  private _sessionRepository?: SessionRepository;
 
-// CORS configuration
+  // Services  
+  private _sessionService?: SessionService;
+  private _videoSyncService?: VideoSyncService;
+  private _webSocketManager?: WebSocketManager;
+
+  // Controllers
+  private _sessionController?: SessionController;
+
+  get sessionRepository(): SessionRepository {
+    if (!this._sessionRepository) {
+      this._sessionRepository = new SessionRepository(pool, redisClient);
+    }
+    return this._sessionRepository;
+  }
+
+  get sessionService(): SessionService {
+    if (!this._sessionService) {
+      this._sessionService = new SessionService(this.sessionRepository);
+    }
+    return this._sessionService;
+  }
+
+  get videoSyncService(): VideoSyncService {
+    if (!this._videoSyncService) {
+      this._videoSyncService = new VideoSyncService(
+        this.sessionService,
+        this.sessionRepository
+      );
+    }
+    return this._videoSyncService;
+  }
+
+  get webSocketManager(): WebSocketManager {
+    if (!this._webSocketManager) {
+      this._webSocketManager = new WebSocketManager(
+        io,
+        this.sessionService,
+        this.videoSyncService
+      );
+    }
+    return this._webSocketManager;
+  }
+
+  get sessionController(): SessionController {
+    if (!this._sessionController) {
+      this._sessionController = new SessionController(this.sessionService);
+    }
+    return this._sessionController;
+  }
+}
+
+const container = new Container();
+
+// Basic middleware
+app.use(helmet());
 app.use(cors({
   origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'],
   credentials: true,
 }));
+app.use(express.json());
 
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-// Request logging
-app.use(requestLogger);
-
-// Health check endpoint
-app.use('/health', healthRoutes);
-
-// API routes
-app.use('/api/sessions', sessionRoutes);
-
-// Error handling
-app.use(notFoundHandler);
-app.use(errorHandler);
-
-// WebSocket setup
-const wsManager = new WebSocketManager(io);
-wsManager.initialize();
-
-// Graceful shutdown
-const gracefulShutdown = (signal: string) => {
-  logger.info(`Received ${signal}, shutting down gracefully`);
-  
-  server.close(() => {
-    logger.info('HTTP server closed');
-    
-    // Close database connections
-    logger.info('Closing database connections...');
-    process.exit(0);
-  });
-  
-  // Force shutdown after 30 seconds
-  setTimeout(() => {
-    logger.error('Could not close connections in time, forcefully shutting down');
-    process.exit(1);
-  }, 30000);
-};
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-// Unhandled errors
-process.on('uncaughtException', (error: Error) => {
-  logger.fatal('Uncaught Exception', {
-    error: error.message,
-    stack: error.stack,
-  });
-  process.exit(1);
+// Request ID middleware
+app.use((req, res, next) => {
+  req.headers['x-request-id'] = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  next();
 });
 
-process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
-  logger.fatal('Unhandled Rejection', {
-    reason: reason instanceof Error ? reason.message : reason,
-    stack: reason instanceof Error ? reason.stack : undefined,
-    promise: promise.toString(),
+// Health check route
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    service: 'syncwatch-api',
+    version: '1.0.0',
   });
-  process.exit(1);
 });
 
-// Start server
-const startServer = async () => {
+// Session routes
+const sessionController = container.sessionController;
+
+app.post('/api/sessions', (req, res, next) => {
+  sessionController.createSession(req, res, next);
+});
+
+app.post('/api/sessions/:sessionId/join', (req, res, next) => {
+  sessionController.joinSession(req, res, next);
+});
+
+app.post('/api/sessions/:sessionId/leave', (req, res, next) => {
+  sessionController.leaveSession(req, res, next);
+});
+
+app.get('/api/sessions/:sessionId', (req, res, next) => {
+  sessionController.getSession(req, res, next);
+});
+
+app.post('/api/sessions/:sessionId/video-url', (req, res, next) => {
+  sessionController.setVideoUrl(req, res, next);
+});
+
+app.post('/api/sessions/:sessionId/end', (req, res, next) => {
+  sessionController.endSession(req, res, next);
+});
+
+// 404 handler
+app.use((req, res) => {
+  console.log(`❌ 404 - Route not found: ${req.method} ${req.url}`);
+  res.status(404).json({
+    success: false,
+    error: `Route ${req.method} ${req.url} not found`,
+    errorCode: 'ROUTE_NOT_FOUND',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Global Error Handler
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error('💥 Global Error Handler:', {
+    error: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    requestId: req.headers['x-request-id'],
+  });
+
+  // Handle known application errors
+  if (err instanceof BaseError) {
+    res.status(err.statusCode).json({
+      success: false,
+      error: err.message,
+      errorCode: err.errorCode,
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
+  // Handle specific error types
+  if (err.name === 'ValidationError') {
+    res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      errorCode: 'VALIDATION_ERROR',
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
+  if (err.name === 'UnauthorizedError') {
+    res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      errorCode: 'UNAUTHORIZED',
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
+  // Default error response
+  res.status(500).json({
+    success: false,
+    error: process.env.NODE_ENV === 'production' 
+      ? 'Internal server error' 
+      : err.message,
+    errorCode: 'INTERNAL_SERVER_ERROR',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Initialize application
+const initializeApp = async (): Promise<void> => {
   try {
-    // Connect to databases
-    await connectDatabase();
-    await connectRedis();
-    
-    // Start HTTP server
-    server.listen(PORT, () => {
-      logger.info(`🚀 SyncWatch API server running on port ${PORT}`, {
-        port: PORT,
-        environment: process.env.NODE_ENV || 'development',
-        nodeVersion: process.version,
-      });
-    });
-    
+    // Initialize database connections
+    await initializeDatabase();
+    console.log('✅ Database initialized');
+
+    // Initialize WebSocket manager
+    container.webSocketManager.initialize();
+    console.log('✅ WebSocket manager initialized');
+
+    console.log('🚀 Application initialized successfully');
   } catch (error) {
-    logger.fatal('Failed to start server', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-    });
+    console.error('❌ Failed to initialize application:', error);
     process.exit(1);
   }
 };
 
-startServer();
+// Start server
+const startServer = async (): Promise<void> => {
+  await initializeApp();
 
-export { app, server, io }; 
+  server.listen(PORT, () => {
+    console.log(`🎬 SyncWatch API server running on port ${PORT}`);
+    console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 CORS origins: ${process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
+  });
+};
+
+// Process-level error handling
+process.on('uncaughtException', (error: Error) => {
+  console.error('🚨 Uncaught Exception:', {
+    error: error.message,
+    stack: error.stack,
+  });
+  
+  // Graceful shutdown
+  gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  console.error('🚨 Unhandled Rejection:', {
+    reason: reason instanceof Error ? reason.message : reason,
+    stack: reason instanceof Error ? reason.stack : undefined,
+    promise: promise.toString(),
+  });
+  
+  // Graceful shutdown
+  gracefulShutdown('unhandledRejection');
+});
+
+// Graceful shutdown
+const gracefulShutdown = async (signal: string): Promise<void> => {
+  console.log(`🛑 Graceful shutdown initiated by ${signal}`);
+  
+  try {
+    // Close server
+    server.close(() => {
+      console.log('✅ HTTP server closed');
+    });
+
+    // Close database connections
+    await closeDatabase();
+    
+    console.log('✅ Graceful shutdown completed');
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ Error during graceful shutdown:', error);
+    process.exit(1);
+  }
+};
+
+// Handle shutdown signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Start the application
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  });
+}
+
+export { app, server, container }; 

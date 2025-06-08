@@ -1,158 +1,346 @@
 import { Server, Socket } from 'socket.io';
-import { SOCKET_EVENTS } from '@syncwatch/shared';
-import { logger } from '@/config/logger';
+import { VideoEvent, SessionData } from '../types';
+import { ISessionService } from '../services/SessionService';
+import { IVideoSyncService } from '../services/VideoSyncService';
+import { BaseError } from '../utils/errors';
 
-export class WebSocketManager {
-  private io: Server;
-  private sessions: Map<string, Set<string>> = new Map(); // sessionId -> Set of socketIds
+interface SocketData {
+  sessionId?: string;
+  userId?: string;
+}
 
-  constructor(io: Server) {
-    this.io = io;
-  }
+export interface IWebSocketManager {
+  initialize(): void;
+  broadcastToSession(sessionId: string, event: string, data: any, excludeSocketId?: string): void;
+  getSessionParticipants(sessionId: string): number;
+}
 
-  public initialize(): void {
+export class WebSocketManager implements IWebSocketManager {
+  private readonly connectedUsers = new Map<string, Set<string>>(); // sessionId -> Set of socketIds
+
+  constructor(
+    private readonly io: Server,
+    private readonly sessionService: ISessionService,
+    private readonly videoSyncService: IVideoSyncService
+  ) {}
+
+  initialize(): void {
     this.io.on('connection', (socket: Socket) => {
-      logger.info('Client connected', { socketId: socket.id });
+      this.handleConnection(socket);
+    });
 
-      socket.on(SOCKET_EVENTS.JOIN_SESSION, (data) => {
-        this.handleJoinSession(socket, data);
-      });
+    console.log('🔌 WebSocket manager initialized');
+  }
 
-      socket.on(SOCKET_EVENTS.LEAVE_SESSION, (data) => {
-        this.handleLeaveSession(socket, data);
-      });
+  private handleConnection(socket: Socket): void {
+    console.log(`🔌 Client connected: ${socket.id}`);
 
-      socket.on(SOCKET_EVENTS.VIDEO_EVENT, (data) => {
-        this.handleVideoEvent(socket, data);
-      });
+    // Set up event handlers
+    socket.on('join-session', (data) => this.handleJoinSession(socket, data));
+    socket.on('leave-session', (data) => this.handleLeaveSession(socket, data));
+    socket.on('video-event', (data) => this.handleVideoEvent(socket, data));
+    socket.on('disconnect', (reason) => this.handleDisconnection(socket, reason));
 
-      socket.on('disconnect', (reason) => {
-        this.handleDisconnect(socket, reason);
-      });
+    // Send welcome message
+    socket.emit('connected', {
+      socketId: socket.id,
+      timestamp: Date.now()
     });
   }
 
-  private handleJoinSession(socket: Socket, data: { sessionId: string; userId: string }): void {
-    const { sessionId, userId } = data;
+  private async handleJoinSession(socket: Socket, data: any): Promise<void> {
+    try {
+      const { sessionId, userId } = data;
 
-    logger.info('User joining session via WebSocket', { sessionId, userId, socketId: socket.id });
-
-    // Join the socket room
-    socket.join(sessionId);
-
-    // Add to sessions map
-    if (!this.sessions.has(sessionId)) {
-      this.sessions.set(sessionId, new Set());
-    }
-    this.sessions.get(sessionId)!.add(socket.id);
-
-    // Store user info on socket
-    socket.data = { sessionId, userId };
-
-    // Notify other users in the session
-    socket.to(sessionId).emit(SOCKET_EVENTS.USER_JOINED, {
-      sessionId,
-      userId,
-    });
-
-    // Send confirmation to the joining user
-    socket.emit(SOCKET_EVENTS.SESSION_JOINED, {
-      sessionId,
-      participants: Array.from(this.sessions.get(sessionId) || []),
-    });
-
-    logger.info('User joined session successfully', { 
-      sessionId, 
-      userId, 
-      participantCount: this.sessions.get(sessionId)?.size || 0 
-    });
-  }
-
-  private handleLeaveSession(socket: Socket, data: { sessionId: string; userId: string }): void {
-    const { sessionId, userId } = data;
-
-    logger.info('User leaving session', { sessionId, userId, socketId: socket.id });
-
-    socket.leave(sessionId);
-
-    // Remove from sessions map
-    if (this.sessions.has(sessionId)) {
-      this.sessions.get(sessionId)!.delete(socket.id);
-      
-      if (this.sessions.get(sessionId)!.size === 0) {
-        this.sessions.delete(sessionId);
+      if (!sessionId || !userId) {
+        socket.emit('error', {
+          message: 'Session ID and User ID are required',
+          code: 'VALIDATION_ERROR'
+        });
+        return;
       }
-    }
 
-    // Notify other users
-    socket.to(sessionId).emit(SOCKET_EVENTS.USER_LEFT, {
-      sessionId,
-      userId,
-    });
+      console.log(`🎭 User ${userId} joining session ${sessionId} via WebSocket`);
 
-    socket.emit(SOCKET_EVENTS.SESSION_LEFT, { sessionId });
-  }
+      // Join the session using session service
+      const joinResult = await this.sessionService.joinSession(sessionId, userId);
+      
+      if (!joinResult.success) {
+        socket.emit('error', {
+          message: joinResult.error.message,
+          code: joinResult.error.errorCode
+        });
+        return;
+      }
 
-  private handleVideoEvent(socket: Socket, event: any): void {
-    const { sessionId } = socket.data || {};
+      const session = joinResult.data;
 
-    if (!sessionId) {
-      socket.emit(SOCKET_EVENTS.ERROR, {
-        message: 'Not in a session',
-        code: 'NOT_IN_SESSION',
+      // Join socket room
+      socket.join(sessionId);
+      socket.data = { sessionId, userId } as SocketData;
+
+      // Track connected users
+      if (!this.connectedUsers.has(sessionId)) {
+        this.connectedUsers.set(sessionId, new Set());
+      }
+      this.connectedUsers.get(sessionId)!.add(socket.id);
+
+      // Notify user they joined successfully
+      socket.emit('session-joined', {
+        sessionId,
+        session,
+        participants: session.participants,
+        participantCount: session.participants.length
       });
-      return;
+
+      // Notify other users in the session
+      socket.to(sessionId).emit('user-joined', {
+        sessionId,
+        userId,
+        participantCount: session.participants.length,
+        participants: session.participants
+      });
+
+      // Send current video state if available
+      if (session.videoState) {
+        socket.emit('video-sync', {
+          sessionId,
+          videoState: session.videoState,
+          timestamp: Date.now()
+        });
+      }
+
+      console.log(`✅ User ${userId} joined session ${sessionId} successfully`);
+
+    } catch (error) {
+      console.error('Error handling join session:', error);
+      socket.emit('error', {
+        message: 'Failed to join session',
+        code: 'INTERNAL_ERROR'
+      });
     }
-
-    logger.info('Video event received', { 
-      sessionId, 
-      userId: socket.data.userId,
-      eventType: event.type,
-      socketId: socket.id 
-    });
-
-    // Broadcast to all other users in the session
-    socket.to(sessionId).emit(SOCKET_EVENTS.VIDEO_SYNC, {
-      ...event.data,
-      timestamp: Date.now(),
-    });
   }
 
-  private handleDisconnect(socket: Socket, reason: string): void {
-    const { sessionId, userId } = socket.data || {};
+  private async handleLeaveSession(socket: Socket, data: any): Promise<void> {
+    try {
+      const { sessionId, userId } = data;
+      
+      if (!sessionId || !userId) {
+        socket.emit('error', {
+          message: 'Session ID and User ID are required',
+          code: 'VALIDATION_ERROR'
+        });
+        return;
+      }
 
-    logger.info('Client disconnected', { 
-      socketId: socket.id, 
-      reason,
-      sessionId,
-      userId
-    });
+      console.log(`👋 User ${userId} leaving session ${sessionId}`);
 
-    if (sessionId) {
-      // Remove from sessions map
-      if (this.sessions.has(sessionId)) {
-        this.sessions.get(sessionId)!.delete(socket.id);
-        
-        if (this.sessions.get(sessionId)!.size === 0) {
-          this.sessions.delete(sessionId);
+      // Leave the session using session service
+      const leaveResult = await this.sessionService.leaveSession(sessionId, userId);
+      
+      if (!leaveResult.success) {
+        socket.emit('error', {
+          message: leaveResult.error.message,
+          code: leaveResult.error.errorCode
+        });
+        return;
+      }
+
+      const session = leaveResult.data;
+
+      // Leave socket room
+      socket.leave(sessionId);
+      socket.data = {};
+
+      // Remove from connected users tracking
+      if (this.connectedUsers.has(sessionId)) {
+        this.connectedUsers.get(sessionId)!.delete(socket.id);
+        if (this.connectedUsers.get(sessionId)!.size === 0) {
+          this.connectedUsers.delete(sessionId);
         }
       }
 
-      // Notify other users if user was in a session
-      if (userId) {
-        socket.to(sessionId).emit(SOCKET_EVENTS.USER_LEFT, {
-          sessionId,
-          userId,
-        });
-      }
+      // Notify user they left successfully
+      socket.emit('session-left', {
+        sessionId,
+        message: 'Left session successfully'
+      });
+
+      // Notify other users in the session
+      socket.to(sessionId).emit('user-left', {
+        sessionId,
+        userId,
+        participantCount: session.participants.length,
+        participants: session.participants
+      });
+
+      console.log(`✅ User ${userId} left session ${sessionId} successfully`);
+
+    } catch (error) {
+      console.error('Error handling leave session:', error);
+      socket.emit('error', {
+        message: 'Failed to leave session',
+        code: 'INTERNAL_ERROR'
+      });
     }
   }
 
-  public getSessionParticipants(sessionId: string): number {
-    return this.sessions.get(sessionId)?.size || 0;
+  private async handleVideoEvent(socket: Socket, eventData: any): Promise<void> {
+    try {
+      const socketData = socket.data as SocketData;
+      const { sessionId, userId } = socketData;
+
+      if (!sessionId || !userId) {
+        socket.emit('error', {
+          message: 'Not in a session',
+          code: 'NOT_IN_SESSION'
+        });
+        return;
+      }
+
+      console.log(`📹 Video event in session ${sessionId}:`, {
+        eventType: eventData.type,
+        userId,
+        data: eventData.data
+      });
+
+      // Create video event object
+      const videoEvent: VideoEvent = {
+        type: eventData.type,
+        sessionId,
+        userId,
+        data: eventData.data,
+        timestamp: Date.now()
+      };
+
+      // Handle the video event using video sync service
+      const result = await this.videoSyncService.handleVideoEvent(sessionId, videoEvent, userId);
+      
+      if (!result.success) {
+        socket.emit('error', {
+          message: result.error.message,
+          code: result.error.errorCode
+        });
+        return;
+      }
+
+      const newVideoState = result.data;
+
+      // Broadcast the synchronized video state to all other users in the session
+      this.broadcastToSession(sessionId, 'video-sync', {
+        sessionId,
+        videoState: newVideoState,
+        eventType: eventData.type,
+        triggeredBy: userId,
+        timestamp: Date.now()
+      }, socket.id);
+
+      // Confirm to the sender
+      socket.emit('video-event-processed', {
+        sessionId,
+        eventType: eventData.type,
+        videoState: newVideoState,
+        timestamp: Date.now()
+      });
+
+      console.log(`✅ Video event processed successfully in session ${sessionId}`);
+
+    } catch (error) {
+      console.error('Error handling video event:', error);
+      socket.emit('error', {
+        message: 'Failed to process video event',
+        code: 'INTERNAL_ERROR'
+      });
+    }
   }
 
-  public getAllSessions(): string[] {
-    return Array.from(this.sessions.keys());
+  private handleDisconnection(socket: Socket, reason: string): void {
+    const socketData = socket.data as SocketData;
+    const { sessionId, userId } = socketData;
+
+    console.log(`🔌 Client disconnected: ${socket.id}, reason: ${reason}`);
+
+    if (sessionId && userId) {
+      // Handle disconnection asynchronously
+      this.handleUserDisconnection(sessionId, userId, socket.id)
+        .catch(error => {
+          console.error('Error handling user disconnection:', error);
+        });
+    }
+  }
+
+  private async handleUserDisconnection(sessionId: string, userId: string, socketId: string): Promise<void> {
+    try {
+      // Remove from connected users tracking
+      if (this.connectedUsers.has(sessionId)) {
+        this.connectedUsers.get(sessionId)!.delete(socketId);
+        
+        // Check if user has other connections
+        const sessionConnections = this.connectedUsers.get(sessionId)!;
+        const userStillConnected = Array.from(sessionConnections).some(connSocketId => {
+          const connSocket = this.io.sockets.sockets.get(connSocketId);
+          const connSocketData = connSocket?.data as SocketData;
+          return connSocketData?.userId === userId;
+        });
+
+        // If user has no more connections, remove them from session
+        if (!userStillConnected) {
+          console.log(`🚪 User ${userId} fully disconnected from session ${sessionId}`);
+          
+          const leaveResult = await this.sessionService.leaveSession(sessionId, userId);
+          
+          if (leaveResult.success) {
+            // Notify other users in the session
+            this.io.to(sessionId).emit('user-left', {
+              sessionId,
+              userId,
+              participantCount: leaveResult.data.participants.length,
+              participants: leaveResult.data.participants,
+              reason: 'disconnected'
+            });
+          }
+        }
+
+        // Clean up empty session tracking
+        if (sessionConnections.size === 0) {
+          this.connectedUsers.delete(sessionId);
+        }
+      }
+    } catch (error) {
+      console.error('Error in handleUserDisconnection:', error);
+    }
+  }
+
+  // Public methods for broadcasting
+  broadcastToSession(sessionId: string, event: string, data: any, excludeSocketId?: string): void {
+    if (excludeSocketId) {
+      this.io.to(sessionId).except(excludeSocketId).emit(event, data);
+    } else {
+      this.io.to(sessionId).emit(event, data);
+    }
+  }
+
+  getSessionParticipants(sessionId: string): number {
+    return this.connectedUsers.get(sessionId)?.size || 0;
+  }
+
+  // Method to get all active sessions
+  getActiveSessions(): string[] {
+    return Array.from(this.connectedUsers.keys());
+  }
+
+  // Method to force disconnect a user from all sessions
+  disconnectUser(userId: string): void {
+    for (const [sessionId, socketIds] of this.connectedUsers.entries()) {
+      for (const socketId of socketIds) {
+        const socket = this.io.sockets.sockets.get(socketId);
+        const socketData = socket?.data as SocketData;
+        
+        if (socketData?.userId === userId) {
+          socket?.disconnect(true);
+          console.log(`🔌 Force disconnected user ${userId} from session ${sessionId}`);
+        }
+      }
+    }
   }
 } 
