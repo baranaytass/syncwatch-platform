@@ -39,6 +39,9 @@ export const redisClient = createClient({
   ...(redisConfig.password && { password: redisConfig.password }),
 });
 
+// Alias for backward compatibility
+export const redis = redisClient;
+
 // Initialize connections
 export const initializeDatabase = async (): Promise<void> => {
   try {

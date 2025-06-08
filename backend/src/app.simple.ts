@@ -50,6 +50,213 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ✅ Video Provider Routes
+app.get('/api/video/providers', (req, res) => {
+  const providers = [
+    {
+      name: 'html5',
+      displayName: 'Direct Video',
+      icon: '🎬',
+      supportedUrls: ['/\\.(mp4|webm|ogg|mov|avi)(\\?.*)?$/i'],
+      capabilities: {
+        canPlay: true,
+        canPause: true,
+        canSeek: true,
+        canSetVolume: true,
+        canSetPlaybackRate: true,
+        supportsFullscreen: true
+      },
+      description: 'Direct video file (MP4, WebM, OGG)'
+    },
+    {
+      name: 'youtube',
+      displayName: 'YouTube',
+      icon: '📺',
+      supportedUrls: ['/(?:youtube\\.com\\/watch\\?v=|youtu\\.be\\/|youtube\\.com\\/embed\\/)([a-zA-Z0-9_-]{11})/'],
+      capabilities: {
+        canPlay: true,
+        canPause: true,
+        canSeek: true,
+        canSetVolume: true,
+        canSetPlaybackRate: false,
+        supportsFullscreen: true
+      },
+      description: 'YouTube videos'
+    },
+    {
+      name: 'vimeo',
+      displayName: 'Vimeo',
+      icon: '🎭',
+      supportedUrls: ['/vimeo\\.com\\/(\\d+)/'],
+      capabilities: {
+        canPlay: true,
+        canPause: true,
+        canSeek: true,
+        canSetVolume: true,
+        canSetPlaybackRate: false,
+        supportsFullscreen: true
+      },
+      description: 'Vimeo videos (coming soon)'
+    },
+    {
+      name: 'ownmedia',
+      displayName: 'Upload Video',
+      icon: '📤',
+      supportedUrls: [],
+      capabilities: {
+        canPlay: true,
+        canPause: true,
+        canSeek: true,
+        canSetVolume: true,
+        canSetPlaybackRate: true,
+        supportsFullscreen: true
+      },
+      description: 'Upload your own video files'
+    }
+  ];
+
+  return res.json({
+    success: true,
+    data: providers,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.post('/api/video/validate', (req, res) => {
+  const { url, provider } = req.body;
+
+  if (!provider || provider.trim().length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'URL and provider are required',
+      errorCode: 'VALIDATION_ERROR',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  if (!url || url.trim().length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid URL format',
+      errorCode: 'VALIDATION_ERROR',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Basic URL format validation
+  try {
+    const urlObj = new URL(url);
+    // Only allow HTTP and HTTPS protocols
+    if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid URL format',
+        errorCode: 'VALIDATION_ERROR',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  } catch {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid URL format',
+      errorCode: 'VALIDATION_ERROR',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Provider-specific validation
+  let isValid = false;
+  let videoId = null;
+
+  switch (provider) {
+    case 'youtube':
+      const youtubeMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+      isValid = !!youtubeMatch;
+      videoId = youtubeMatch ? youtubeMatch[1] : null;
+      break;
+
+    case 'html5':
+      isValid = /\.(mp4|webm|ogg|mov|avi)(\?.*)?$/i.test(url);
+      break;
+
+    case 'vimeo':
+      const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+      isValid = !!vimeoMatch;
+      videoId = vimeoMatch ? vimeoMatch[1] : null;
+      break;
+
+    case 'ownmedia':
+      isValid = true; // Will be handled later
+      break;
+
+    default:
+      isValid = false;
+  }
+
+  if (!isValid) {
+    return res.status(400).json({
+      success: false,
+      error: `Invalid URL format for ${provider}`,
+      errorCode: 'VALIDATION_ERROR',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  const config = {
+    provider,
+    url,
+    ...(videoId && { videoId }),
+    metadata: provider === 'youtube' && videoId ? {
+      thumbnail: `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+    } : undefined
+  };
+
+  return res.json({
+    success: true,
+    data: config,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.post('/api/video/detect-provider', (req, res) => {
+  const { url } = req.body;
+
+  if (!url) {
+    return res.status(400).json({
+      success: false,
+      error: 'URL is required',
+      errorCode: 'VALIDATION_ERROR',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  let provider = 'html5'; // default
+
+  if (url.match(/(?:youtube\.com|youtu\.be)/)) {
+    provider = 'youtube';
+  } else if (url.match(/vimeo\.com/)) {
+    provider = 'vimeo';
+  } else if (/\.(mp4|webm|ogg|mov|avi)(\?.*)?$/i.test(url)) {
+    provider = 'html5';
+  }
+
+  const providerInfo = {
+    'youtube': { name: 'youtube', displayName: 'YouTube', icon: '📺' },
+    'vimeo': { name: 'vimeo', displayName: 'Vimeo', icon: '🎭' },
+    'html5': { name: 'html5', displayName: 'Direct Video', icon: '🎬' },
+    'ownmedia': { name: 'ownmedia', displayName: 'Upload Video', icon: '📤' }
+  }[provider] || { name: 'html5', displayName: 'Direct Video', icon: '🎬' };
+
+  return res.json({
+    success: true,
+    data: {
+      provider,
+      providerInfo,
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.post('/api/sessions', (req, res) => {
   try {
     const { userId } = req.body;

@@ -17,6 +17,9 @@ import { WebSocketManager } from './websocket/WebSocketManager';
 // Controllers
 import { SessionController } from './controllers/SessionController';
 
+// Routes
+import videoRoutes from './routes/video.routes';
+
 // Middleware
 import { BaseError } from './utils/errors';
 
@@ -143,6 +146,8 @@ app.post('/api/sessions/:sessionId/video-url', (req, res, next) => {
 app.post('/api/sessions/:sessionId/end', (req, res, next) => {
   sessionController.endSession(req, res, next);
 });
+
+app.use('/api/video', videoRoutes);
 
 // 404 handler
 app.use((req, res) => {

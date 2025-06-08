@@ -1,4 +1,4 @@
-import { VideoState, VideoEvent, SessionData } from '../types';
+import { VideoState, VideoEvent, SessionData, VideoProvider } from '../types';
 import { Result, Ok, Err } from '../utils/result';
 import { BaseError, ValidationError, SyncFailedError } from '../utils/errors';
 import { SessionRepository } from './repositories/SessionRepository';
@@ -253,53 +253,54 @@ export class VideoSyncService implements IVideoSyncService {
       isPlaying: false,
       duration: 0,
       url: '',
+      provider: 'html5' as VideoProvider,
       lastUpdated: 0
     };
 
     switch (event.type) {
-      case 'PLAY':
-        return {
-          ...baseState,
-          currentTime: event.data.currentTime,
-          isPlaying: true,
-          lastUpdated: event.timestamp
-        };
+    case 'PLAY':
+      return {
+        ...baseState,
+        currentTime: event.data.currentTime,
+        isPlaying: true,
+        lastUpdated: event.timestamp
+      };
 
-      case 'PAUSE':
-        return {
-          ...baseState,
-          currentTime: event.data.currentTime,
-          isPlaying: false,
-          lastUpdated: event.timestamp
-        };
+    case 'PAUSE':
+      return {
+        ...baseState,
+        currentTime: event.data.currentTime,
+        isPlaying: false,
+        lastUpdated: event.timestamp
+      };
 
-      case 'SEEK':
-        return {
-          ...baseState,
-          currentTime: event.data.currentTime,
-          lastUpdated: event.timestamp
-        };
+    case 'SEEK':
+      return {
+        ...baseState,
+        currentTime: event.data.currentTime,
+        lastUpdated: event.timestamp
+      };
 
-      case 'LOAD':
-        return {
-          ...baseState,
-          url: event.data.url || baseState.url,
-          currentTime: 0,
-          isPlaying: false,
-          lastUpdated: event.timestamp
-        };
+    case 'LOAD':
+      return {
+        ...baseState,
+        url: event.data.url || baseState.url,
+        currentTime: 0,
+        isPlaying: false,
+        lastUpdated: event.timestamp
+      };
 
-      case 'ENDED':
-        return {
-          ...baseState,
-          currentTime: baseState.duration,
-          isPlaying: false,
-          lastUpdated: event.timestamp
-        };
+    case 'ENDED':
+      return {
+        ...baseState,
+        currentTime: baseState.duration,
+        isPlaying: false,
+        lastUpdated: event.timestamp
+      };
 
-      default:
-        console.warn('Unknown video event type', { eventType: event.type });
-        return baseState;
+    default:
+      console.warn('Unknown video event type', { eventType: event.type });
+      return baseState;
     }
   }
 

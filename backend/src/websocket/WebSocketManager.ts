@@ -201,7 +201,7 @@ export class WebSocketManager implements IWebSocketManager {
       console.log(`📹 Video event in session ${sessionId}:`, {
         eventType: eventData.type,
         userId,
-        data: eventData.data
+        currentTime: eventData.currentTime
       });
 
       // Create video event object
@@ -209,8 +209,11 @@ export class WebSocketManager implements IWebSocketManager {
         type: eventData.type,
         sessionId,
         userId,
-        data: eventData.data,
-        timestamp: Date.now()
+        data: {
+          currentTime: eventData.currentTime,
+          url: eventData.url
+        },
+        timestamp: eventData.timestamp || Date.now()
       };
 
       // Handle the video event using video sync service
@@ -228,11 +231,11 @@ export class WebSocketManager implements IWebSocketManager {
 
       // Broadcast the synchronized video state to all other users in the session
       this.broadcastToSession(sessionId, 'video-sync', {
-        sessionId,
-        videoState: newVideoState,
-        eventType: eventData.type,
-        triggeredBy: userId,
-        timestamp: Date.now()
+        type: eventData.type,
+        currentTime: newVideoState.currentTime,
+        isPlaying: newVideoState.isPlaying,
+        timestamp: Date.now(),
+        triggeredBy: userId
       }, socket.id);
 
       // Confirm to the sender

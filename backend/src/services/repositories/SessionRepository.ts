@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
-import { RedisClientType } from 'redis';
+// Type compatibility issue between @redis/client and redis packages
+// Using any for Redis client to avoid type conflicts
 import { v4 as uuidv4 } from 'uuid';
 import { BaseRepository } from './BaseRepository';
 import { SessionData } from '../../types';
@@ -7,7 +8,7 @@ import { Result, Ok, Err } from '../../utils/result';
 import { DatabaseError, SessionNotFoundError, BaseError } from '../../utils/errors';
 
 export class SessionRepository extends BaseRepository<SessionData> {
-  constructor(pool: Pool, redis: RedisClientType) {
+  constructor(pool: Pool, redis: any) {
     super(pool, redis, 'sessions');
   }
 
