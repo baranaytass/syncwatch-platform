@@ -1,5 +1,24 @@
 import React, { useState } from 'react';
 import { useSession } from '../context/SessionContext';
+import VideoProviderSelector from './VideoProviderSelector';
+import { VideoProvider } from '../../../shared/src/types/video.types';
+import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
+import { Separator } from './ui/separator';
+import { 
+  LogOut, 
+  Copy, 
+  Users, 
+  Calendar, 
+  Hash, 
+  Video, 
+  Plus, 
+  Edit,
+  ExternalLink,
+  Crown
+} from 'lucide-react';
+import { toast } from 'react-toastify';
 
 interface SessionDetailsProps {
   className?: string;
@@ -7,32 +26,29 @@ interface SessionDetailsProps {
 
 export const SessionDetails: React.FC<SessionDetailsProps> = ({ className }) => {
   const { currentSession, updateVideoUrl, leaveSession, isLoading } = useSession();
-  const [videoUrlInput, setVideoUrlInput] = useState<string>('');
-  const [showUrlForm, setShowUrlForm] = useState<boolean>(false);
+  const [showProviderSelector, setShowProviderSelector] = useState<boolean>(false);
 
   if (!currentSession) {
     return null;
   }
 
-  const handleVideoUrlSubmit = async (): Promise<void> => {
-    const trimmedUrl = videoUrlInput.trim();
-    
-    if (!trimmedUrl) {
-      alert('Lütfen geçerli bir video URL girin.');
-      return;
-    }
+  // Safe access to session properties
+  const sessionId = currentSession.id || '';
+  const sessionStatus = currentSession.status || 'WAITING';
+  const sessionParticipants = currentSession.participants || [];
+  const sessionCreatedAt = currentSession.createdAt || new Date();
+  const sessionVideoUrl = currentSession.videoUrl || '';
 
-    // Basic URL validation
+  const handleVideoSubmit = async (provider: VideoProvider, url: string): Promise<void> => {
     try {
-      new URL(trimmedUrl);
-    } catch {
-      alert('Geçersiz URL formatı. Lütfen doğru bir URL girin.');
-      return;
+      console.log('📺 Setting video:', { provider, url });
+      // URL zaten provider prefix ile geliyor (VideoProviderSelector'dan)
+      await updateVideoUrl(url);
+      setShowProviderSelector(false);
+    } catch (error) {
+      console.error('❌ Error setting video:', error);
+      toast.error('Video ayarlanırken hata oluştu');
     }
-
-    await updateVideoUrl(trimmedUrl);
-    setVideoUrlInput('');
-    setShowUrlForm(false);
   };
 
   const handleLeaveSession = (): void => {
@@ -41,32 +57,37 @@ export const SessionDetails: React.FC<SessionDetailsProps> = ({ className }) => 
     }
   };
 
-  const copySessionId = (): void => {
-    navigator.clipboard.writeText(currentSession.id).then(() => {
-      alert('Session ID kopyalandı!');
-    }).catch(() => {
+  const copySessionId = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(sessionId);
+      toast.success('Session ID kopyalandı!');
+    } catch (error) {
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
-      textArea.value = currentSession.id;
+      textArea.value = sessionId;
       document.body.appendChild(textArea);
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      alert('Session ID kopyalandı!');
-    });
+      toast.success('Session ID kopyalandı!');
+    }
   };
 
   const formatDate = (date: Date | string): string => {
-    const d = typeof date === 'string' ? new Date(date) : date;
-    return d.toLocaleString('tr-TR');
+    try {
+      const d = typeof date === 'string' ? new Date(date) : date;
+      return d.toLocaleString('tr-TR');
+    } catch (error) {
+      return 'Bilinmiyor';
+    }
   };
 
-  const getStatusColor = (status: string): string => {
+  const getStatusVariant = (status: string): "default" | "secondary" | "destructive" | "success" | "warning" => {
     switch (status) {
-      case 'WAITING': return '#f39c12';
-      case 'ACTIVE': return '#2ecc71';
-      case 'ENDED': return '#e74c3c';
-      default: return '#95a5a6';
+      case 'WAITING': return 'warning';
+      case 'ACTIVE': return 'success';
+      case 'ENDED': return 'destructive';
+      default: return 'secondary';
     }
   };
 
@@ -80,159 +101,220 @@ export const SessionDetails: React.FC<SessionDetailsProps> = ({ className }) => 
   };
 
   return (
-    <div className={`session-details ${className || ''}`}>
-      <div className="session-header">
-        <h2>🎬 Aktif Oturum</h2>
-        <div className="session-actions">
-          <button
-            onClick={handleLeaveSession}
-            className="btn btn-danger leave-btn"
-            disabled={isLoading}
-          >
-            Oturumdan Ayrıl
-          </button>
-        </div>
-      </div>
-
-      <div className="session-info">
-        <div className="info-grid">
-          <div className="info-item">
-            <label>Session ID:</label>
-            <div className="session-id-display">
-              <code className="session-id" data-testid="session-id">
-                {currentSession.id}
-              </code>
-              <button 
-                onClick={copySessionId}
-                className="btn btn-sm btn-outline copy-btn"
-                title="Session ID'yi kopyala"
-              >
-                📋
-              </button>
-            </div>
-          </div>
-
-          <div className="info-item">
-            <label>Durum:</label>
-            <span 
-              className="status-badge" 
-              style={{ color: getStatusColor(currentSession.status) }}
-              data-testid="session-status"
-            >
-              {getStatusText(currentSession.status)}
-            </span>
-          </div>
-
-          <div className="info-item">
-            <label>Oluşturulma:</label>
-            <span>{formatDate(currentSession.createdAt)}</span>
-          </div>
-
-          <div className="info-item">
-            <label>Katılımcılar:</label>
-            <span data-testid="user-count">
-              {currentSession.participants?.length || 1} kişi
-            </span>
-          </div>
-        </div>
-
-        {currentSession.participants && currentSession.participants.length > 0 && (
-          <div className="participants-section">
-            <h4>Katılımcılar:</h4>
-            <div className="participants-list">
-              {currentSession.participants.map((participantId, index) => (
-                <div key={participantId} className="participant-item">
-                  <span className="participant-id">
-                    {participantId.substring(0, 8)}...
-                  </span>
-                  {index === 0 && <span className="host-badge">HOST</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="video-section">
-        <h3>📺 Video Ayarları</h3>
-        
-        {currentSession.videoUrl ? (
-          <div className="current-video">
-            <div className="video-info">
-              <label>Mevcut Video:</label>
-              <div className="video-url">
-                <a 
-                  href={currentSession.videoUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="video-link"
-                >
-                  {currentSession.videoUrl}
-                </a>
+    <div className={`w-full max-w-4xl mx-auto space-y-6 ${className || ''}`}>
+      {/* Session Header */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Video className="h-6 w-6 text-primary" />
+              <div>
+                <CardTitle className="text-2xl">Aktif Oturum</CardTitle>
+                <CardDescription>
+                  Session bilgileri ve katılımcı yönetimi
+                </CardDescription>
               </div>
             </div>
-            <button
-              onClick={() => setShowUrlForm(true)}
-              className="btn btn-outline change-video-btn"
+            <Button
+              onClick={handleLeaveSession}
+              variant="destructive"
               disabled={isLoading}
+              className="flex items-center gap-2"
             >
-              Video Değiştir
-            </button>
+              <LogOut className="h-4 w-4" />
+              Oturumdan Ayrıl
+            </Button>
           </div>
-        ) : (
-          <div className="no-video">
-            <p>Henüz video ayarlanmamış. İzlemek istediğiniz video URL'ini girin:</p>
-            <button
-              onClick={() => setShowUrlForm(true)}
-              className="btn btn-primary add-video-btn"
-              disabled={isLoading}
-            >
-              Video Ekle
-            </button>
-          </div>
-        )}
+        </CardHeader>
+      </Card>
 
-        {showUrlForm && (
-          <div className="video-url-form">
-            <div className="form-group">
-              <label htmlFor="videoUrl">Video URL:</label>
-              <input
-                id="videoUrl"
-                type="url"
-                placeholder="https://example.com/video.mp4"
-                value={videoUrlInput}
-                onChange={(e) => setVideoUrlInput(e.target.value)}
-                className="video-url-input"
-                data-testid="video-url-input"
-                disabled={isLoading}
-              />
-              <small>
-                Desteklenen formatlar: MP4, WebM, YouTube, Vimeo, Dailymotion
-              </small>
+      {/* Session Info */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Oturum Bilgileri</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Session ID */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Hash className="h-4 w-4" />
+                Session ID
+              </div>
+              <div className="flex items-center gap-2">
+                <code 
+                  className="flex-1 px-3 py-2 bg-muted rounded-md font-mono text-sm"
+                  data-testid="session-id"
+                >
+                  {sessionId}
+                </code>
+                <Button
+                  onClick={copySessionId}
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-1"
+                  title="Session ID'yi kopyala"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            
-            <div className="form-actions">
-              <button
-                onClick={handleVideoUrlSubmit}
-                disabled={isLoading || !videoUrlInput.trim()}
-                className="btn btn-primary"
+
+            {/* Status */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                Durum
+              </div>
+              <Badge 
+                variant={getStatusVariant(sessionStatus)}
+                data-testid="session-status"
+                className="w-fit"
               >
-                {isLoading ? 'Kaydediliyor...' : 'Video URL Kaydet'}
-              </button>
-              <button
-                onClick={() => {
-                  setShowUrlForm(false);
-                  setVideoUrlInput('');
-                }}
-                className="btn btn-secondary"
-                disabled={isLoading}
-              >
-                İptal
-              </button>
+                {getStatusText(sessionStatus)}
+              </Badge>
+            </div>
+
+            {/* Created At */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Calendar className="h-4 w-4" />
+                Oluşturulma
+              </div>
+              <p className="text-sm">{formatDate(sessionCreatedAt)}</p>
+            </div>
+
+            {/* Participants Count */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Users className="h-4 w-4" />
+                Katılımcılar
+              </div>
+              <p className="text-sm" data-testid="user-count">
+                {sessionParticipants.length || 1} kişi
+              </p>
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Participants List */}
+          {sessionParticipants && sessionParticipants.length > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <h4 className="flex items-center gap-2 font-medium">
+                  <Users className="h-4 w-4" />
+                  Katılımcı Listesi
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {sessionParticipants.map((participantId, index) => (
+                    <div 
+                      key={participantId} 
+                      className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg"
+                    >
+                      <div className="flex-1 font-mono text-sm">
+                        {participantId.substring(0, 8)}...
+                      </div>
+                      {index === 0 && (
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          <Crown className="h-3 w-3" />
+                          HOST
+                        </Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Video Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Video className="h-5 w-5" />
+            Video Ayarları
+          </CardTitle>
+          <CardDescription>
+            İzlemek istediğiniz video kaynağını yönetin
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {sessionVideoUrl ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Mevcut Video
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 p-3 bg-muted/50 rounded-lg">
+                    <a 
+                      href={sessionVideoUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-sm text-primary hover:underline break-all"
+                    >
+                      <ExternalLink className="h-4 w-4 flex-shrink-0" />
+                      {sessionVideoUrl}
+                    </a>
+                  </div>
+                  <Button
+                    onClick={() => setShowProviderSelector(true)}
+                    variant="outline"
+                    disabled={isLoading}
+                    className="flex items-center gap-2"
+                  >
+                    <Edit className="h-4 w-4" />
+                    Değiştir
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 space-y-4">
+              <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+                <Video className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Henüz video ayarlanmamış
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  İzlemek istediğiniz video kaynağını seçin
+                </p>
+              </div>
+              <Button
+                onClick={() => setShowProviderSelector(true)}
+                disabled={isLoading}
+                className="flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Video Ekle
+              </Button>
+            </div>
+          )}
+
+          {showProviderSelector && (
+            <div className="space-y-4 pt-4 border-t">
+              <VideoProviderSelector
+                onVideoSubmit={handleVideoSubmit}
+                isLoading={isLoading}
+                className="provider-selector"
+              />
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => setShowProviderSelector(false)}
+                  variant="outline"
+                  disabled={isLoading}
+                >
+                  İptal
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
