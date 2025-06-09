@@ -5,7 +5,7 @@
   "main": "dist/app.js",
   "scripts": {
     "build": "tsc",
-    "dev": "nodemon --exec ts-node -r tsconfig-paths/register src/app.simple.ts",
+    "dev": "nodemon --exec ts-node -r tsconfig-paths/register src/app.ts",
     "start": "node dist/app.js",
     "test": "jest",
     "test:watch": "jest --watch",

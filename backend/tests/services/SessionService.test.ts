@@ -3,6 +3,7 @@ import { SessionRepository } from '../../src/services/repositories/SessionReposi
 import { ValidationError, SessionNotFoundError } from '../../src/utils/errors';
 import { testPool, testRedis } from '../setup';
 import { isOk, isErr } from '../../src/utils/result';
+import { VideoState } from '../../src/types';
 
 describe('SessionService', () => {
   let sessionService: SessionService;
@@ -350,12 +351,13 @@ describe('SessionService', () => {
 
     it('should update video state successfully', async () => {
       // Arrange
-      const videoState = {
+      const videoState: VideoState = {
         currentTime: 30,
         isPlaying: true,
         duration: 120,
         url: 'https://example.com/video.mp4',
-        lastUpdated: Date.now()
+        provider: 'html5',
+        lastUpdated: Date.now(),
       };
 
       // Act
@@ -370,14 +372,15 @@ describe('SessionService', () => {
       }
     });
 
-    it('should handle empty sessionId', async () => {
+    it('should handle empty session ID', async () => {
       // Arrange
-      const videoState = {
+      const videoState: VideoState = {
         currentTime: 30,
         isPlaying: true,
         duration: 120,
         url: 'https://example.com/video.mp4',
-        lastUpdated: Date.now()
+        provider: 'html5',
+        lastUpdated: Date.now(),
       };
 
       // Act

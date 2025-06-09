@@ -1,11 +1,5 @@
 -- SyncWatch Database Initialization
--- Database already exists via POSTGRES_DB environment variable
-
--- Create database if not exists
-CREATE DATABASE IF NOT EXISTS syncwatch;
-
--- Connect to the syncwatch database
-\c syncwatch;
+-- Note: Database is created via POSTGRES_DB environment variable in Docker
 
 -- Create extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -39,7 +33,7 @@ CREATE TABLE IF NOT EXISTS video_events (
     session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
     user_id VARCHAR(255) NOT NULL,
     event_type VARCHAR(50) NOT NULL, -- 'PLAY', 'PAUSE', 'SEEK', 'LOAD'
-    current_time DECIMAL(10,3),
+    video_time DECIMAL(10,3),
     video_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -68,18 +62,5 @@ CREATE TRIGGER update_sessions_updated_at
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
 
--- Clean up expired sessions function
-CREATE OR REPLACE FUNCTION cleanup_expired_sessions()
-RETURNS void AS $$
-BEGIN
-    DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP;
-END;
-$$ language 'plpgsql';
-
--- Initial data (optional)
-INSERT INTO sessions (user_id, status) 
-VALUES ('demo-user', 'WAITING') 
-ON CONFLICT (user_id) DO NOTHING;
-
--- Permissions (if needed)
+-- Permissions
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres; 

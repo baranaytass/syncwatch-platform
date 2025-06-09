@@ -143,8 +143,124 @@ app.post('/api/sessions/:sessionId/video-url', (req, res, next) => {
   sessionController.setVideoUrl(req, res, next);
 });
 
+// Add PUT route for video URL (frontend uses PUT)
+app.put('/api/sessions/:sessionId/video-url', (req, res, next) => {
+  sessionController.setVideoUrl(req, res, next);
+});
+
 app.post('/api/sessions/:sessionId/end', (req, res, next) => {
   sessionController.endSession(req, res, next);
+});
+
+// Video provider routes (from app.simple.ts)
+app.get('/api/video/providers', (req, res) => {
+  const providers = [
+    {
+      name: 'html5',
+      displayName: 'Direct Video',
+      icon: '🎬',
+      supportedUrls: ['/\\.(mp4|webm|ogg|mov|avi)(\\?.*)?$/i'],
+      capabilities: {
+        canPlay: true,
+        canPause: true,
+        canSeek: true,
+        canSetVolume: true,
+        canSetPlaybackRate: true,
+        supportsFullscreen: true
+      },
+      description: 'Direct video file (MP4, WebM, OGG)'
+    },
+    {
+      name: 'youtube',
+      displayName: 'YouTube',
+      icon: '📺',
+      supportedUrls: ['/(?:youtube\\.com\\/watch\\?v=|youtu\\.be\\/|youtube\\.com\\/embed\\/)([a-zA-Z0-9_-]{11})/'],
+      capabilities: {
+        canPlay: true,
+        canPause: true,
+        canSeek: true,
+        canSetVolume: true,
+        canSetPlaybackRate: false,
+        supportsFullscreen: true
+      },
+      description: 'YouTube videos'
+    },
+    {
+      name: 'vimeo',
+      displayName: 'Vimeo',
+      icon: '🎭',
+      supportedUrls: ['/vimeo\\.com\\/(\\d+)/'],
+      capabilities: {
+        canPlay: true,
+        canPause: true,
+        canSeek: true,
+        canSetVolume: true,
+        canSetPlaybackRate: false,
+        supportsFullscreen: true
+      },
+      description: 'Vimeo videos (coming soon)'
+    },
+    {
+      name: 'ownmedia',
+      displayName: 'Upload Video',
+      icon: '📤',
+      supportedUrls: [],
+      capabilities: {
+        canPlay: true,
+        canPause: true,
+        canSeek: true,
+        canSetVolume: true,
+        canSetPlaybackRate: true,
+        supportsFullscreen: true
+      },
+      description: 'Upload your own video files'
+    }
+  ];
+
+  return res.json({
+    success: true,
+    data: providers,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.post('/api/video/detect-provider', (req, res) => {
+  const { url } = req.body;
+
+  if (!url) {
+    return res.status(400).json({
+      success: false,
+      error: 'URL is required',
+      errorCode: 'VALIDATION_ERROR',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  let provider = 'html5'; // default
+
+  if (url.match(/(?:youtube\.com|youtu\.be)/)) {
+    provider = 'youtube';
+  } else if (url.match(/vimeo\.com/)) {
+    provider = 'vimeo';
+  } else if (/\.(mp4|webm|ogg|mov|avi)(\?.*)?$/i.test(url)) {
+    provider = 'html5';
+  }
+
+  const providerInfo = {
+    'youtube': { name: 'youtube', displayName: 'YouTube', icon: '📺' },
+    'vimeo': { name: 'vimeo', displayName: 'Vimeo', icon: '🎭' },
+    'html5': { name: 'html5', displayName: 'Direct Video', icon: '🎬' },
+    'ownmedia': { name: 'ownmedia', displayName: 'Upload Video', icon: '📤' }
+  }[provider] || { name: 'html5', displayName: 'Direct Video', icon: '🎬' };
+
+  return res.json({
+    success: true,
+    data: {
+      provider,
+      providerInfo,
+    },
+    timestamp: new Date().toISOString(),
+  });
 });
 
 app.use('/api/video', videoRoutes);
