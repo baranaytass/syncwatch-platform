@@ -1,3 +1,12 @@
+export interface VideoState {
+  currentTime: number;
+  isPlaying: boolean;
+  duration: number;
+  url: string;
+  provider: string;
+  lastUpdated: number;
+}
+
 export interface SessionData {
   id: string;
   userId: string;
@@ -5,6 +14,7 @@ export interface SessionData {
   createdAt: Date;
   participants: string[];
   videoUrl?: string;
+  videoState?: VideoState;
   currentVideoTime?: number;
   isPlaying?: boolean;
 }

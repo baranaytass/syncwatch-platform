@@ -199,7 +199,11 @@ class WebSocketService {
     }
 
     console.log(`📹 Sending video event:`, event);
-    this.socket.emit('video-event', event);
+    this.socket.emit('video-event', {
+      ...event,
+      sessionId: this.currentSessionId,
+      timestamp: Date.now(),
+    });
   }
 
   // ✅ Get connection status

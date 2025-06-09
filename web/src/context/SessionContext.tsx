@@ -127,6 +127,16 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({ children }) =>
       }
     };
 
+    const handleVideoSync = (data: {
+      type: 'PLAY' | 'PAUSE' | 'SEEK' | 'LOAD';
+      currentTime?: number;
+      timestamp: number;
+    }) => {
+      console.log('📹 WebSocket: Video sync event received', data);
+      // Video sync event'leri VideoPlayer component'i tarafından handle ediliyor
+      // Bu event'leri VideoPlayer'a broadcast etmek için re-emit yapıyoruz
+    };
+
     // Register event listeners
     webSocketService.on('session-joined', handleSessionJoined);
     webSocketService.on('user-joined', handleUserJoined);
@@ -134,6 +144,7 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({ children }) =>
     webSocketService.on('session-refreshed', handleSessionRefreshed);
     webSocketService.on('session-error', handleSessionError);
     webSocketService.on('video-url-updated', handleVideoUrlUpdated);
+    webSocketService.on('video-sync', handleVideoSync);
 
     // Cleanup on unmount
     return () => {
@@ -144,6 +155,7 @@ export const SessionProvider: React.FC<SessionProviderProps> = ({ children }) =>
       webSocketService.off('session-refreshed', handleSessionRefreshed);
       webSocketService.off('session-error', handleSessionError);
       webSocketService.off('video-url-updated', handleVideoUrlUpdated);
+      webSocketService.off('video-sync', handleVideoSync);
     };
   }, [state.userId]);
 

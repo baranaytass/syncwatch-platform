@@ -92,7 +92,7 @@ class ApiService {
     try {
       const response = await this.api.put<VideoUrlUpdateResponse>(
         `/api/sessions/${request.sessionId}/video-url`,
-        { videoUrl: request.videoUrl }
+        { url: request.videoUrl }
       );
       return response.data;
     } catch (error: any) {

@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
 import { useSession } from '../context/SessionContext';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Video, Users } from 'lucide-react';
 
 interface SessionCreatorProps {
   className?: string;
@@ -28,72 +33,92 @@ export const SessionCreator: React.FC<SessionCreatorProps> = ({ className }) => 
   };
 
   return (
-    <div className={`session-creator ${className || ''}`}>
-      <div className="session-controls">
+    <div className={`w-full max-w-4xl mx-auto ${className || ''}`}>
+      <div className="grid gap-6 md:grid-cols-2">
         {/* Create Session Section */}
-        <div className="create-session-section">
-          <h2>🎬 Yeni Oturum Oluştur</h2>
-          <p>Arkadaşlarınızla birlikte video izlemek için yeni bir oturum başlatın.</p>
-          <div className="user-info">
-            <small>Your ID: {currentUserId ? currentUserId.substring(0, 8) + '...' : 'Oluşturuluyor...'}</small>
-          </div>
-          <button
-            onClick={handleCreateSession}
-            disabled={isLoading}
-            className="btn btn-primary create-btn"
-            data-testid="create-session-btn"
-          >
-            {isLoading ? 'Oluşturuluyor...' : 'Oturum Oluştur'}
-          </button>
-        </div>
-
-        {/* Divider */}
-        <div className="divider">
-          <span>VEYA</span>
-        </div>
+        <Card className="relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-bl-full opacity-10" />
+          <CardHeader className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Video className="h-5 w-5 text-blue-600" />
+              Yeni Oturum Oluştur
+            </CardTitle>
+            <CardDescription>
+              Arkadaşlarınızla birlikte video izlemek için yeni bir oturum başlatın.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-muted/50 p-3 rounded-lg">
+              <Label className="text-xs text-muted-foreground">Your ID</Label>
+              <p className="text-sm font-mono">
+                {currentUserId ? currentUserId.substring(0, 8) + '...' : 'Oluşturuluyor...'}
+              </p>
+            </div>
+            <Button
+              onClick={handleCreateSession}
+              disabled={isLoading}
+              className="w-full"
+              size="lg"
+              data-testid="create-session-btn"
+            >
+              {isLoading ? 'Oluşturuluyor...' : 'Oturum Oluştur'}
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Join Session Section */}
-        <div className="join-session-section">
-          <h2>🔗 Mevcut Oturuma Katıl</h2>
-          <p>Arkadaşınızın paylaştığı Session ID ile mevcut oturuma katılın.</p>
-          
-          <div className="form-group">
-            <label htmlFor="sessionId">Session ID:</label>
-            <input
-              id="sessionId"
-              type="text"
-              placeholder="Session ID'yi buraya girin"
-              value={sessionIdInput}
-              onChange={(e) => setSessionIdInput(e.target.value)}
-              className="session-input"
-              data-testid="session-id-input"
-              disabled={isLoading}
-            />
-          </div>
+        <Card className="relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-green-500 to-teal-600 rounded-bl-full opacity-10" />
+          <CardHeader className="space-y-1">
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Users className="h-5 w-5 text-green-600" />
+              Mevcut Oturuma Katıl
+            </CardTitle>
+            <CardDescription>
+              Arkadaşınızın paylaştığı Session ID ile mevcut oturuma katılın.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="sessionId">Session ID</Label>
+              <Input
+                id="sessionId"
+                type="text"
+                placeholder="Session ID'yi buraya girin"
+                value={sessionIdInput}
+                onChange={(e) => setSessionIdInput(e.target.value)}
+                data-testid="session-id-input"
+                disabled={isLoading}
+              />
+            </div>
 
-          <div className="form-group">
-            <label htmlFor="userId">Your User ID (opsiyonel):</label>
-            <input
-              id="userId"
-              type="text"
-              placeholder="Varsayılan kullanıcı ID'si kullanılacak"
-              value={userIdForJoin}
-              onChange={(e) => setUserIdForJoin(e.target.value)}
-              className="user-input"
-              disabled={isLoading}
-            />
-            <small>Boş bırakılırsa mevcut kullanıcı ID'niz kullanılır: {currentUserId ? currentUserId.substring(0, 8) + '...' : 'Oluşturuluyor...'}</small>
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="userId">Your User ID (opsiyonel)</Label>
+              <Input
+                id="userId"
+                type="text"
+                placeholder="Varsayılan kullanıcı ID'si kullanılacak"
+                value={userIdForJoin}
+                onChange={(e) => setUserIdForJoin(e.target.value)}
+                disabled={isLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Boş bırakılırsa mevcut kullanıcı ID'niz kullanılır: {currentUserId ? currentUserId.substring(0, 8) + '...' : 'Oluşturuluyor...'}
+              </p>
+            </div>
 
-          <button
-            onClick={handleJoinSession}
-            disabled={isLoading || !sessionIdInput.trim()}
-            className="btn btn-secondary join-btn"
-            data-testid="join-session-btn"
-          >
-            {isLoading ? 'Katılıyor...' : 'Oturuma Katıl'}
-          </button>
-        </div>
+            <Button
+              onClick={handleJoinSession}
+              disabled={isLoading || !sessionIdInput.trim()}
+              variant="secondary"
+              className="w-full"
+              size="lg"
+              data-testid="join-session-btn"
+            >
+              {isLoading ? 'Katılıyor...' : 'Oturuma Katıl'}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
