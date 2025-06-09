@@ -51,3 +51,6 @@ temp/
 
 # Development documentation (keep local only)
 development.md 
+# Playwright test artifacts
+web/playwright-report/
+web/test-results/
